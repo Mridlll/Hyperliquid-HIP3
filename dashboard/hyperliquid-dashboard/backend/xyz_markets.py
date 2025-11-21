@@ -31,9 +31,9 @@ class XYZMarketsClient:
         self.callbacks = []
         self.max_trades_history = max_trades_history  # Keep small buffer for quick access
 
-        # Dynamically fetch all XYZ equity perps from API
-        self.xyz_assets = self._fetch_xyz_assets()
-        print(f"Discovered {len(self.xyz_assets)} XYZ equity perpetuals")
+        # Dynamically fetch all HIP-3 assets from API (xyz, flx, vntl)
+        self.hip3_assets = self._fetch_hip3_assets()
+        print(f"Discovered {len(self.hip3_assets)} HIP-3 assets")
 
         # In-memory buffer (small, for quick access to recent data)
         self.all_trades_history = []
@@ -45,43 +45,46 @@ class XYZMarketsClient:
             self.trade_db = TradeDatabase(db_path=db_path, batch_size=100, batch_timeout=1.0)
             print(f"Database storage enabled: {db_path}")
 
-    def _fetch_xyz_assets(self) -> List[str]:
+    def _fetch_hip3_assets(self) -> List[str]:
         """
-        Dynamically fetch all XYZ equity perpetual markets from API
-        Returns list of asset names (e.g., ['xyz:XYZ100', 'xyz:NVDA', ...])
+        Dynamically fetch all HIP-3 assets from API (xyz, flx, vntl)
+        Returns list of asset names (e.g., ['xyz:XYZ100', 'xyz:NVDA', 'flx:TSLA', 'vntl:SPACEX', ...])
         """
-        try:
-            response = requests.post(
-                f"{self.api_url}/info",
-                json={"type": "meta", "dex": "xyz"},
-                timeout=10
-            )
+        all_assets = []
+        hip3_dexes = ["xyz", "flx", "vntl"]
 
-            if response.ok:
-                meta = response.json()
-                universe = meta.get("universe", [])
+        for dex in hip3_dexes:
+            try:
+                response = requests.post(
+                    f"{self.api_url}/info",
+                    json={"type": "meta", "dex": dex},
+                    timeout=10
+                )
 
-                # Extract all asset names (including delisted ones)
-                assets = [asset["name"] for asset in universe if "name" in asset]
+                if response.ok:
+                    meta = response.json()
+                    universe = meta.get("universe", [])
 
-                # Filter to only active assets (exclude delisted)
-                active_assets = [
-                    asset["name"] for asset in universe
-                    if "name" in asset and not asset.get("isDelisted", False)
-                ]
+                    # Extract all asset names for this dex
+                    assets = [asset["name"] for asset in universe if "name" in asset]
 
-                print(f"Total XYZ markets: {len(assets)} ({len(active_assets)} active, {len(assets) - len(active_assets)} delisted)")
+                    # Filter to only active assets (exclude delisted)
+                    active_assets = [
+                        asset["name"] for asset in universe
+                        if "name" in asset and not asset.get("isDelisted", False)
+                    ]
 
-                # Return active assets only for trading data collection
-                return active_assets
-            else:
-                print(f"Failed to fetch XYZ assets: {response.status_code}")
-                # Fallback to known assets
-                return self._get_fallback_assets()
+                    print(f"Total {dex.upper()} markets: {len(assets)} ({len(active_assets)} active, {len(assets) - len(active_assets)} delisted)")
+                    all_assets.extend(active_assets)
+                else:
+                    print(f"Warning: Could not fetch {dex} metadata: {response.status_code}")
+            except Exception as e:
+                print(f"Error fetching {dex} assets: {e}")
 
-        except Exception as e:
-            print(f"Error fetching XYZ assets: {e}")
-            return self._get_fallback_assets()
+        # Remove duplicates and return
+        unique_assets = list(set(all_assets))
+        print(f"Discovered {len(unique_assets)} total HIP-3 assets")
+        return unique_assets
 
     def _get_fallback_assets(self) -> List[str]:
         """Fallback list of known XYZ assets if API fetch fails"""
@@ -102,10 +105,10 @@ class XYZMarketsClient:
 
                 # Handle different channel types
                 if channel == "allMids":
-                    # Update price data
+                    # Update price data for all HIP-3 assets
                     mids = data["data"]["mids"]
                     for asset_name, price in mids.items():
-                        if asset_name.startswith("xyz:"):
+                        if asset_name.startswith(('xyz:', 'flx:', 'vntl:')):
                             if asset_name not in self.market_data:
                                 self.market_data[asset_name] = {}
                             self.market_data[asset_name]["mark_price"] = float(price)
@@ -117,7 +120,7 @@ class XYZMarketsClient:
                     if isinstance(trades_data, list):
                         for trade in trades_data:
                             coin = trade.get("coin", "")
-                            if coin.startswith("xyz:"):
+                            if coin.startswith(('xyz:', 'flx:', 'vntl:')):
                                 if coin not in self.market_data:
                                     self.market_data[coin] = {}
                                 if "recent_trades" not in self.market_data[coin]:
@@ -165,7 +168,7 @@ class XYZMarketsClient:
         self.connected = False
 
     def on_open(self, ws):
-        """Handle WebSocket open - subscribe to XYZ markets"""
+        """Handle WebSocket open - subscribe to all HIP-3 markets"""
         print("WebSocket connection opened")
         self.connected = True
 
@@ -179,8 +182,8 @@ class XYZMarketsClient:
         ws.send(json.dumps(subscribe_msg))
         print("Subscribed to allMids")
 
-        # Subscribe to trades for each XYZ asset
-        for asset in self.xyz_assets[:5]:  # Start with top 5 to avoid overwhelming
+        # Subscribe to trades for each HIP-3 asset
+        for asset in self.hip3_assets[:10]:  # Start with top 10 to avoid overwhelming
             trades_msg = {
                 "method": "subscribe",
                 "subscription": {

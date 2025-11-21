@@ -54,10 +54,11 @@ hip3_db = HIP3Database(os.path.join(os.path.dirname(__file__), "api", "hip3_anal
 def save_trade_to_hip3(market_data):
     """Callback to save trades from WebSocket to HIP-3 database"""
     try:
-        xyz_assets = [k for k in market_data.keys() if k.startswith('xyz:')]
-        if xyz_assets:
-            print(f"[HIP3 Callback] Processing {len(xyz_assets)} assets")
-            for coin in xyz_assets:
+        # Include all HIP-3 assets (xyz, flx, vntl)
+        hip3_assets = [k for k in market_data.keys() if k.startswith(('xyz:', 'flx:', 'vntl:'))]
+        if hip3_assets:
+            print(f"[HIP3 Callback] Processing {len(hip3_assets)} assets: {list(hip3_assets)}")
+            for coin in hip3_assets:
                 data = market_data[coin]
                 if "recent_trades" in data and data["recent_trades"]:
                     trades = data["recent_trades"]
@@ -85,8 +86,13 @@ def save_trade_to_hip3(market_data):
                         }
                         hip3_db.record_trade(trade_data)
                         print(f"[HIP3 Callback] Saved trade: {coin} at ${trade_data['price']} (fee: ${fee:.4f})")
+                else:
+                    if coin.startswith(('flx:', 'vntl:')):
+                        print(f"[HIP3 Callback] No recent trades found for {coin}")
     except Exception as e:
         print(f"[HIP3 Callback ERROR]: {e}")
+        import traceback
+        traceback.print_exc()
 
 
 # Register the callback with XYZ client
@@ -1125,7 +1131,7 @@ if __name__ == '__main__':
     xyz_connected = xyz_client.connect()
     if xyz_connected:
         print("XYZ WebSocket connected successfully")
-        print(f"Tracking {len(xyz_client.xyz_assets)} XYZ equity perpetuals")
+        print(f"Tracking {len(xyz_client.hip3_assets)} HIP-3 assets")
 
         # Initialize HIP-3 analytics with connected client
         hip3_analytics = HIP3WebSocketAnalytics(xyz_client)

@@ -153,15 +153,31 @@ class HIP3AdvancedAnalytics:
             total_premium = 0
 
             for ctx in asset_ctxs:
-                oracle_px = float(ctx.get("oraclePx", 0))
-                mark_px = float(ctx.get("markPx", 0))
-                mid_px = float(ctx.get("midPx", 0))
+                oracle_px_str = ctx.get("oraclePx")
+                mark_px_str = ctx.get("markPx")
+                mid_px_str = ctx.get("midPx")
+
+                # Handle None or missing values safely
+                try:
+                    oracle_px = float(oracle_px_str) if oracle_px_str and oracle_px_str != "None" else 0
+                    mark_px = float(mark_px_str) if mark_px_str and mark_px_str != "None" else 0
+                    mid_px = float(mid_px_str) if mid_px_str and mid_px_str != "None" else 0
+                except (ValueError, TypeError):
+                    # Skip this asset if we can't parse the prices
+                    continue
+
+                # Skip if no valid oracle price
+                if oracle_px <= 0:
+                    continue
 
                 # Calculate deviations
                 oracle_to_mark_dev = ((mark_px - oracle_px) / oracle_px * 100) if oracle_px > 0 else 0
                 oracle_to_mid_dev = ((mid_px - oracle_px) / oracle_px * 100) if oracle_px > 0 else 0
 
-                premium = float(ctx.get("premium", 0))
+                try:
+                    premium = float(ctx.get("premium", 0))
+                except (ValueError, TypeError):
+                    premium = 0
 
                 total_deviation += abs(oracle_to_mark_dev)
                 total_premium += premium
@@ -180,11 +196,12 @@ class HIP3AdvancedAnalytics:
                     "oracle_to_mark_deviation_pct": round(oracle_to_mark_dev, 4),
                     "oracle_to_mid_deviation_pct": round(oracle_to_mid_dev, 4),
                     "premium": premium,
-                    "funding_rate": float(ctx.get("funding", 0))
+                    "funding_rate": float(ctx.get("funding", 0)) if ctx.get("funding") is not None else 0
                 })
 
-            oracle_metrics["avg_deviation_pct"] = total_deviation / len(asset_ctxs) if asset_ctxs else 0
-            oracle_metrics["avg_premium"] = total_premium / len(asset_ctxs) if asset_ctxs else 0
+            valid_assets_count = len(oracle_metrics["assets"])
+            oracle_metrics["avg_deviation_pct"] = total_deviation / valid_assets_count if valid_assets_count > 0 else 0
+            oracle_metrics["avg_premium"] = total_premium / valid_assets_count if valid_assets_count > 0 else 0
 
             return oracle_metrics
 

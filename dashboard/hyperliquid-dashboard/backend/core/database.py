@@ -177,27 +177,46 @@ class HIP3Database:
 
     def record_trade(self, trade_data: Dict):
         """Record a single trade"""
-        conn = self.get_connection()
-        cursor = conn.cursor()
+        max_retries = 3
+        retry_delay = 0.1
 
-        timestamp_ms = int(trade_data.get('timestamp', 0) * 1000) if trade_data.get('timestamp') else int(datetime.now().timestamp() * 1000)
+        for attempt in range(max_retries):
+            try:
+                conn = self.get_connection()
+                cursor = conn.cursor()
 
-        cursor.execute("""
-            INSERT INTO trades (timestamp_ms, coin, side, price, size, user, fee, oi, funding_rate)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """, (
-            timestamp_ms,
-            trade_data.get('coin'),
-            trade_data.get('side'),
-            trade_data.get('price'),
-            trade_data.get('size'),
-            trade_data.get('user'),
-            trade_data.get('fee', 0),
-            trade_data.get('oi'),
-            trade_data.get('funding_rate')
-        ))
+                timestamp_ms = int(trade_data.get('timestamp', 0) * 1000) if trade_data.get('timestamp') else int(datetime.now().timestamp() * 1000)
 
-        conn.commit()
+                cursor.execute("""
+                    INSERT INTO trades (timestamp_ms, coin, side, price, size, user, fee, oi, funding_rate)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, (
+                    timestamp_ms,
+                    trade_data.get('coin'),
+                    trade_data.get('side'),
+                    trade_data.get('price'),
+                    trade_data.get('size'),
+                    trade_data.get('user'),
+                    trade_data.get('fee', 0),
+                    trade_data.get('oi'),
+                    trade_data.get('funding_rate')
+                ))
+
+                conn.commit()
+                return  # Success, exit the function
+
+            except sqlite3.OperationalError as e:
+                if "database is locked" in str(e) and attempt < max_retries - 1:
+                    print(f"[DB] Database locked, retrying in {retry_delay}s (attempt {attempt + 1}/{max_retries})")
+                    import time
+                    time.sleep(retry_delay)
+                    retry_delay *= 2  # Exponential backoff
+                else:
+                    print(f"[DB] Database error: {e}")
+                    raise
+            except Exception as e:
+                print(f"[DB] Error recording trade: {e}")
+                raise
 
     # ===== MARKET SNAPSHOTS =====
 
