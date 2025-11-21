@@ -176,16 +176,17 @@ class HIP3Database:
     # ===== TRADE RECORDING =====
 
     def record_trade(self, trade_data: Dict):
-        """Record a single trade"""
+        """Record a single trade with proper connection management"""
         max_retries = 3
         retry_delay = 0.1
+
+        # Handle missing fields gracefully
+        timestamp_ms = int(trade_data.get('timestamp', 0) * 1000) if trade_data.get('timestamp') else int(datetime.now().timestamp() * 1000)
 
         for attempt in range(max_retries):
             try:
                 conn = self.get_connection()
                 cursor = conn.cursor()
-
-                timestamp_ms = int(trade_data.get('timestamp', 0) * 1000) if trade_data.get('timestamp') else int(datetime.now().timestamp() * 1000)
 
                 cursor.execute("""
                     INSERT INTO trades (timestamp_ms, coin, side, price, size, user, fee, oi, funding_rate)
@@ -203,7 +204,7 @@ class HIP3Database:
                 ))
 
                 conn.commit()
-                return  # Success, exit the function
+                return  # Success
 
             except sqlite3.OperationalError as e:
                 if "database is locked" in str(e) and attempt < max_retries - 1:
@@ -212,11 +213,13 @@ class HIP3Database:
                     time.sleep(retry_delay)
                     retry_delay *= 2  # Exponential backoff
                 else:
-                    print(f"[DB] Database error: {e}")
+                    print(f"[DB] Database error after {attempt + 1} attempts: {e}")
                     raise
             except Exception as e:
-                print(f"[DB] Error recording trade: {e}")
-                raise
+                print(f"[DB] Error recording trade (attempt {attempt + 1}): {e}")
+                if attempt == max_retries - 1:
+                    raise
+                # Continue to next retry for other exceptions
 
     # ===== MARKET SNAPSHOTS =====
 
