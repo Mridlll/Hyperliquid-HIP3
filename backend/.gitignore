@@ -1,0 +1,34 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# Virtual environments
+venv/
+env/
+ENV/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Data and logs
+*.log
+data/
+*.sqlite
+*.db
+
+# XYZ trades database
+xyz_trades.db
+test_trades.db
+*.db-journal
+hip3_analytics_test.db
