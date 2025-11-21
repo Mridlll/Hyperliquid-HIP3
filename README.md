@@ -2,7 +2,7 @@
 
 Community tools and analytics for Hyperliquid HIP-3 markets (equity perpetuals).
 
-**Created by:** Melon Melon Head (melon@tradexyz.community)
+**Created by:** Melon Melon Head https://x.com/MelonConnsoieur
 
 ## About HIP-3
 
